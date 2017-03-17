@@ -43,7 +43,13 @@ public:
         auto eA = _entities->get( entityx::Entity::Id(contact->GetFixtureA()->GetBody()->GetId()) );
         auto eB = _entities->get( entityx::Entity::Id(contact->GetFixtureB()->GetBody()->GetId()) );
         
-
+     //   uint64_t * a = (uint64_t*)contact->GetFixtureA()->GetUserData();
+     //   uint64_t * b = (uint64_t*)contact->GetFixtureB()->GetUserData();
+        
+     //   auto eA2 = _entities->get( entityx::Entity::Id(*a) );
+      //  auto eB2 = _entities->get( entityx::Entity::Id(*b) );
+        
+        
         if( eA.has_component<Potion>() )
             explodePotion( eA, contact );
         

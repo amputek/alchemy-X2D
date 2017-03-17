@@ -67,10 +67,10 @@ public:
         events.subscribe<ExplosionEvent>(*this);
     }
     
-    void receive(const ExplosionEvent &explosion) {
+    void receive(const ExplosionEvent & explosion) {
 
         auto exp = _entities.create();
-        exp.assign<Explosion>( explosion.position, 2.3f, explosion.normal );
+        exp.assign<Explosion>( explosion.position, 0.8f, explosion.normal );
         exp.assign<soso::Expires>( 0.1f );
     }
     
@@ -194,11 +194,11 @@ public:
     void receive(const ExplosionEvent &explosion) {
         for( int i = 0; i < 5; i ++ )
         {
-            createGlassFragment( explosion.position + randVec2() * 0.05f, explosion.velocity );
+            createGlassFragment( explosion.position + randVec2() * 0.05f, explosion.velocity * 0.2f );
         }
         for( int i = 0; i < 5; i ++ )
         {
-            createFragment( explosion.position + randVec2() * 0.05f, explosion.velocity );
+            createFragment( explosion.position + randVec2() * 0.05f, explosion.velocity * 0.2f );
         }
         createFire( explosion.position );
     }
@@ -232,7 +232,7 @@ public:
 
         b2FixtureDef * tempGroundFixture = new b2FixtureDef( groundFixture );
 
-        tempGroundFixture->shape =  new b2PolygonShape();
+        tempGroundFixture->shape = new b2PolygonShape();
         ((b2PolygonShape*)tempGroundFixture->shape)->SetAsBox( width / 2, height / 2 , b2Vec2(0,0), 0.0f );
 
         body->bodyDefToAdd.position.Set( pos.x, pos.y );
@@ -290,7 +290,7 @@ public:
         //Have to create a new shape
         tempFragmentFixture->shape = new b2PolygonShape();
         ((b2PolygonShape*)tempFragmentFixture->shape)->SetAsBox( randFloat(0.03,0.12), randFloat(0.03,0.12), b2Vec2(0,0), 0.0f );
-        
+
         //Add the fixture to the body component's fixturedef list --- but DONT actually add it to the box2d Body yet. This needs to wait until an actual STEP
         body->addFixtureDef( tempFragmentFixture );
     }
@@ -357,11 +357,13 @@ private:
         //Save the ID of the entity in the body - so we can reference it back at collisions
         bodyComponent->bodyDefToAdd.id = entity.id().id();
         
+        
         //Add the body to the world, using the saved bodyDef inside the entity
         auto body = bodyComponent->body = _world->CreateBody( &bodyComponent->bodyDefToAdd );
         
         //Add the fixtures to the body, using the saved fixtureDefs. delete them as we go
         for (auto it = bodyComponent->fixtureDefList.begin(); it != bodyComponent->fixtureDefList.end(); ++it){
+           // (*it)->userData =  new uint64_t(entity.id().id());
             body->CreateFixture( *it );
             delete *it;
         }
