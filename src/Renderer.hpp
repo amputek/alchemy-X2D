@@ -19,14 +19,12 @@ using namespace cinder;
 using namespace cinder::app;
 using namespace gl;
 
-int poop = 5;
-
 
 class RendererSystem : public entityx::System<RendererSystem>
 {
 public:
     
-    float scale = 36.0f;
+    const float scale = 36.0f;
     FboRef mFbo;
     
     
@@ -40,11 +38,56 @@ public:
 
     }
     
-
-    void update( entityx::EntityManager &entities, entityx::EventManager &events, entityx::TimeDelta dt ) override
+    
+    void drawAimer( EntityManager &entities )
     {
-        return;
+        ComponentHandle<PotionShooter> shooter;
+        for (Entity __unused e : entities.entities_with_components(shooter))
+        {
+            if( !shooter->firing ) continue;
+            
+            
+            gl::color( 1 - shooter->shotPowerRatio(), shooter->shotPowerRatio(), 0 );
         
+            vec2 start = shooter->start * scale;
+            vec2 end = shooter->current * scale;
+            drawSolidCircle( start, 5.0f );
+            drawLine( start, end );
+            drawSolidCircle( end, 5.0f );
+            for (int i = 1; i < 49; i++) {
+                drawLine( shooter->trajectory[i] * scale, shooter->trajectory[i+1] * scale );
+            }
+            
+            
+        }
+        
+    }
+    
+    void drawExplosions( EntityManager &entities )
+    {
+        ComponentHandle<Explosion> explosion;
+        for (Entity __unused e : entities.entities_with_components(explosion))
+        {
+            gl::drawLine( explosion->position * 36.0f, (explosion->position * 36.0f) + (explosion->normal * 100.0f) );
+        }
+        
+    }
+    
+    void drawFire( EntityManager &entities )
+    {
+        ComponentHandle<Fire> fire;
+        ComponentHandle<Body> body;
+        ComponentHandle<Expires> expires;
+        for (Entity __unused e : entities.entities_with_components(body, fire, expires))
+        {
+            color( ColorA( 1, 0.5, 0.2, expires->lifeRatio() ) );
+            gl::drawSolidCircle( body->position() * scale, scale );
+        }
+        
+    }
+    
+    void drawFragments( entityx::EntityManager &entities )
+    {
         ComponentHandle<Fragment> fragment;
         ComponentHandle<Body> body;
         
@@ -52,14 +95,14 @@ public:
         gl::enableAlphaBlending();  //no additive blending when drawing to Fbo
         gl::color( ColorA(0,0,0,0.05f) );
         gl::drawSolidRect( Rectf(0,0,800,600)) ;
-
+        
         gl::begin( GL_LINES );
         for (entityx::Entity __unused e : entities.entities_with_components(body,fragment))
         {
             if( body->lastPosition != vec2(0,0) )
             {
                 float v = glm::length(body->velocity());
-
+                
                 gl::color( ColorA8u( min(v * 10.0f,255.0f), min(v * 5.0f,255.0f), min(v * 2.0f,255.0f), 255 ) );
                 gl::vertex( body->lastPosition * scale );
                 gl::vertex( body->position() * scale );
@@ -73,6 +116,15 @@ public:
         gl::ScopedBlendAdditive add;
         gl::color( ColorA(1,1,1,1) );
         gl::draw( mFbo->getColorTexture(), Rectf(0,0,800,600) );
+
+    }
+
+    void update( entityx::EntityManager &entities, entityx::EventManager &events, entityx::TimeDelta dt ) override
+    {
+        drawAimer(entities);
+        drawExplosions(entities);
+        drawFragments(entities);
+        drawFire(entities);
         
     }
 };

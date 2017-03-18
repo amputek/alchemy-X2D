@@ -12,15 +12,16 @@
 #include <stdio.h>
 #include <Box2D/Box2D.h>
 
-
+using namespace entityx;
 
 class MovementSystem : public entityx::System<MovementSystem>
 {
 public:
-    entityx::EntityManager & _entities;
-    entityx::EventManager & _events;
     
-    explicit MovementSystem( entityx::EntityManager & entities, entityx::EventManager & events ) : _entities(entities), _events(events) {
+    EntityManager & _entities;
+    EventManager & _events;
+    
+    explicit MovementSystem( EntityManager & entities, EventManager & events ) : _entities(entities), _events(events) {
 
     }
     
@@ -29,11 +30,11 @@ public:
         
     }
     
-    void update( entityx::EntityManager &entities, entityx::EventManager &events, entityx::TimeDelta dt ) override
+    void update( EntityManager &entities, EventManager &events, TimeDelta dt ) override
     {
-        entityx::ComponentHandle<Movement> movement;
-        entityx::ComponentHandle<Body> body;
-        for (entityx::Entity __unused e : entities.entities_with_components(movement, body))
+        ComponentHandle<Movement> movement;
+        ComponentHandle<Body> body;
+        for (Entity __unused e : entities.entities_with_components(movement, body))
         {
             if( !body->alive ) continue;
             
@@ -86,7 +87,23 @@ public:
     }
 };
 
-
+class TrajectoryRayCastClosestCallback : public b2RayCastCallback
+{
+public:
+    TrajectoryRayCastClosestCallback() : m_hit(false) {}
+    
+    float32 ReportFixture(b2Fixture* fixture, const b2Vec2& point, const b2Vec2& normal, float32 fraction)
+    {
+        m_hit = true;
+        m_point = point;
+        m_normal = normal;
+        return fraction;
+    }
+    
+    bool m_hit;
+    b2Vec2 m_point;
+    b2Vec2 m_normal;
+};
 
 
 class ShooterSystem  : public entityx::System<ShooterSystem>
@@ -94,8 +111,10 @@ class ShooterSystem  : public entityx::System<ShooterSystem>
 public:
     entityx::EntityManager & _entities;
     entityx::EventManager & _events;
+    b2World & world;
     
-    explicit ShooterSystem( entityx::EntityManager & entities, entityx::EventManager & events ) : _entities(entities), _events(events) {
+    explicit ShooterSystem( entityx::EntityManager & entities, entityx::EventManager & events, b2World & world ) : _entities(entities), _events(events), world(world) {
+    
     }
         
     
@@ -103,61 +122,91 @@ public:
 
     }
     
-    void update( entityx::EntityManager &entities, entityx::EventManager &events, entityx::TimeDelta dt ) override
+    vec2 getTrajectoryPoint( const vec2 & startingPosition, const vec2 & startingVelocity, float stepsAlong, TimeDelta dt )
     {
-        entityx::ComponentHandle<PotionShooter> shooter;
-        for (entityx::Entity __unused e : entities.entities_with_components(shooter))
+        stepsAlong *= 2.0f;
+        
+        //velocity and gravity are given per second but we want time step values here
+        float t = 1.0 / 60.0f; // seconds per time step (at 60fps)
+        vec2 stepVelocity = t * startingVelocity; // m/s
+        vec2 stepGravity = t * t * b2v(world.GetGravity()); // m/s/s
+        
+        return startingPosition + stepsAlong * stepVelocity + 0.5f * (stepsAlong*stepsAlong+stepsAlong) * stepGravity;
+    }
+    
+    void update( EntityManager &entities, EventManager &events, TimeDelta dt ) override
+    {
+        ComponentHandle<PotionShooter> shooter;
+        for (Entity __unused e : entities.entities_with_components(shooter))
         {
+            
       
+            if( !shooter->firing ) continue;
+      
+            vec2 shotVelocity = (shooter->current - shooter->start) * shooter->power;
+
+            if( glm::length( shotVelocity ) > shooter->maxPower )
+            {
+                shotVelocity = glm::normalize(shotVelocity) * shooter->maxPower;
+            }
             
+            shooter->currentShotPower = glm::length( shotVelocity );
             
+            vec2 current = shooter->start;
+            bool endFound = false;
+            vec2 end;
+            
+            for (int i = 0; i < 50; i++) {
+                
+                vec2 trajectoryPosition;
+                
+                if( !endFound )
+                {
+                    trajectoryPosition = getTrajectoryPoint( shooter->start, shotVelocity, i, dt );
+               
+                    if( i > 0 ) { //avoid degenerate raycast where start and end point are the same
+          
+                        if( glm::length( b2v(current) - b2v(trajectoryPosition) ) )
+                        {
+                            TrajectoryRayCastClosestCallback raycastCallback;
+                            world.RayCast(&raycastCallback, b2Vec2(current.x, current.y), b2Vec2(trajectoryPosition.x, trajectoryPosition.y) );
+
+                            if ( raycastCallback.m_hit ) {
+                                endFound = true;
+                                end = b2v(raycastCallback.m_point);
+                                trajectoryPosition = end;
+                            }
+                        }
+
+                    }
+                }
+                else
+                {
+                    trajectoryPosition = end;
+                }
+                    
+                current = trajectoryPosition;
+                shooter->trajectory[i] = trajectoryPosition;
+            }
+        
+        
             if( shooter->release )
             {
-                
-                float velocityLimit = 12.0f;
-                
-                vec2 velocity = (shooter->current - shooter->start) * 3.5f;
-                if( glm::length( velocity ) > velocityLimit ){
-                    velocity = glm::normalize( velocity ) * velocityLimit;
-                }
-                
+            
                // cout << "Shot power: " << glm::length(velocity) << " / " << velocityLimit << "\n";
                 
-            
-                _events.emit<AddPotionEvent>( shooter->start, velocity );
+                _events.emit<AddPotionEvent>( shooter->start, shotVelocity );
 
-                //addedObject = factory->createPotion( startPos, velocity );
-              //  addObject = true;
-                
                 shooter->release = false;
+                shooter->firing = false;
             }
 
+          
             
         }
         
     }
-    
-    
-    void draw( entityx::EntityManager &entities )
-    {
-        entityx::ComponentHandle<PotionShooter> shooter;
-        for (entityx::Entity __unused e : entities.entities_with_components(shooter))
-        {
-            if( shooter->firing )
-            {
-                
-                vec2 start = shooter->start * 36.0f;
-                vec2 end = shooter->current * 36.0f;
-                gl::drawLine( start, end );
-                gl::drawSolidCircle( start, 5.0f );
-                
-            
-                gl::drawLine( start, end );
-                gl::drawSolidCircle( end, 5.0f );
-            }
-        }
-        
-    }
+
 
 };
 

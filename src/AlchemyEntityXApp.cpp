@@ -46,8 +46,7 @@ private:
     entityx::SystemManager _systems;
     ci::Timer              _frame_timer;
     
-    b2World * mWorld;
-    ContactListener * mContactListener;
+    b2World mWorld;
 
     ComponentHandle<PotionShooter> shooter;
     
@@ -58,29 +57,31 @@ private:
 void AlchemyEntityXApp::setup()
 {
     
-    b2Vec2 gravity( 0.0f, 10.0f );
-    mWorld = new b2World( gravity );
-
     _systems.add<BehaviorSystem>(_entities);
     _systems.add<ExpiresSystem>();
     _systems.add<FactorySystem>(mWorld, _entities);
     _systems.add<RendererSystem>();
-    _systems.add<ShooterSystem>(_entities, _events);
+    _systems.add<ShooterSystem>(_entities, _events, mWorld);
     _systems.add<ExplosionSystem>(_entities);
     _systems.add<MovementSystem>(_entities, _events);
     _systems.configure();
     
     
-    mContactListener = new ContactListener( &_events, &_entities );
-    mWorld->SetContactListener(mContactListener);
+    mWorld.SetContactListener( new ContactListener( _events, _entities ) );
     
     
-    mWorld->SetDebugDraw( &debugDrawSystem );
-    debugDrawSystem.SetFlags( b2Draw::e_shapeBit );
 
-    _systems.system<FactorySystem>()->createGround(vec2( getWindowWidth() / 2 / debugDrawSystem.scale, getWindowHeight() / debugDrawSystem.scale), getWindowWidth() / debugDrawSystem.scale, 1.0f );
+    mWorld.SetDebugDraw( &debugDrawSystem );
+    debugDrawSystem.SetFlags( b2Draw::e_shapeBit );
     
-    _systems.system<FactorySystem>()->createGround(vec2( 0, getWindowHeight() / 2 / debugDrawSystem.scale), 1.0f, getWindowHeight() / debugDrawSystem.scale );
+    
+    float scaledWidth = getWindowWidth() / debugDrawSystem.scale;
+    float scaledHeight = getWindowHeight() / debugDrawSystem.scale;
+
+    _systems.system<FactorySystem>()->createGround(vec2( scaledWidth / 2, scaledHeight), scaledWidth, 1.0f );
+    
+    _systems.system<FactorySystem>()->createGround(vec2( 0, scaledHeight / 2), 1.0f, scaledHeight );
+    _systems.system<FactorySystem>()->createGround(vec2( scaledWidth, scaledHeight / 2), 1.0f, scaledHeight );
     
     playerMvt = _systems.system<FactorySystem>()->createPlayer( vec2(5,5) );
 
@@ -89,7 +90,7 @@ void AlchemyEntityXApp::setup()
 
 }
 
-AlchemyEntityXApp::AlchemyEntityXApp() : _entities(_events), _systems(_entities, _events){ }
+AlchemyEntityXApp::AlchemyEntityXApp() : _entities(_events), _systems(_entities, _events), mWorld( b2Vec2(0.0f,10.0f) ) { }
 
 void AlchemyEntityXApp::mouseDown( MouseEvent event )
 {
@@ -131,7 +132,7 @@ void AlchemyEntityXApp::update()
     
 
     for( int i = 0; i < 3; i++)
-        mWorld->Step( dt, 8, 3 );
+        mWorld.Step( dt, 8, 3 );
     
     _systems.update<BehaviorSystem>(dt);
     _systems.update<ExpiresSystem>(dt);
@@ -156,16 +157,15 @@ void AlchemyEntityXApp::draw()
 //        cout << index << " " << e.valid() << endl;
 //    }
     
-    _systems.system<ShooterSystem>()->draw( _entities );
-    _systems.system<ExplosionSystem>()->draw( _entities );
-    
-    mWorld->DrawDebugData();
+
+
+    mWorld.DrawDebugData();
     
     _systems.update<RendererSystem>(1.0/60.0f);
     gl::drawString( "Framerate: " + to_string( roundf(getAverageFps()) ), vec2( 10.0f, 10.0f ) );
 }
 
-CINDER_APP( AlchemyEntityXApp, RendererGl( RendererGl::Options().msaa( 4 ) ), [&]( App::Settings *settings ) {
+CINDER_APP( AlchemyEntityXApp, RendererGl( RendererGl::Options().msaa( 16 ) ), [&]( App::Settings *settings ) {
     settings->setWindowSize(800, 600);
     settings->setFrameRate(60.0f);
     settings->setHighDensityDisplayEnabled();

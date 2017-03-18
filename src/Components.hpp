@@ -81,13 +81,25 @@ public:
     
     void stopFiring()
     {
-        firing = false;
         release = true;
     }
     
-
+    float shotPowerRatio() const
+    {
+        return currentShotPower / maxPower;
+    }
+    
+    
+    float const power = 3.5f;
+    float const maxPower = 12.0f;
+    
+    
+    vec2 trajectory[50];
     vec2 current;
     vec2 start;
+    
+    float currentShotPower = 0.0f;
+    
     bool release = false;
     bool firing = false;
 };
@@ -95,6 +107,14 @@ public:
 
 struct Potion{
     Potion() = default;
+};
+
+struct Fire{
+    Fire() = default;
+};
+
+struct Floor{
+    Floor() = default;
 };
 
 struct Fragment{
@@ -181,8 +201,10 @@ public:
         return horizontal * runSpeed;
     }
     
+    
+    typedef char facing_t;
 
-    int horizontal = 0;
+    facing_t horizontal = 0;
     
     const float maxHorizontalVelocity = 3.0f;
     

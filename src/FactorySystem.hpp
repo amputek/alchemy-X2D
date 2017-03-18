@@ -14,9 +14,10 @@
 
 #include "Components.hpp"
 
+
 using namespace entityx;
 using namespace std;
-
+using namespace soso;
 
 
 struct ExplosionEvent {
@@ -71,7 +72,7 @@ public:
 
         auto exp = _entities.create();
         exp.assign<Explosion>( explosion.position, 0.8f, explosion.normal );
-        exp.assign<soso::Expires>( 0.1f );
+        exp.assign<Expires>( 0.1f );
     }
     
     void update( entityx::EntityManager &entities, entityx::EventManager &events, entityx::TimeDelta dt ) override
@@ -100,7 +101,7 @@ public:
                 
                 vec2 mvtDirection = glm::normalize( diff );
                 
-                float timeMod = expires->time;
+                float timeMod = expires->timeRemaining;
             
                 body->body->ApplyForceToCenter( mvtDirection * explosion->power * inverseSquareDist * timeMod );
                 
@@ -108,21 +109,6 @@ public:
             
         }
     }
-    
-    void draw( entityx::EntityManager &entities )
-    {
-        entityx::ComponentHandle<Explosion> explosion;
-        for (entityx::Entity __unused e : entities.entities_with_components(explosion))
-        {
-       
-            gl::drawLine( explosion->position * 36.0f, (explosion->position * 36.0f) + (explosion->normal * 100.0f) );
-            
-        }
-        
-    }
-
-    
-    
     
     entityx::EntityManager & _entities;
 };
@@ -133,7 +119,7 @@ class FactorySystem : public entityx::System<FactorySystem>, public entityx::Rec
     
 public:
     
-    explicit FactorySystem( b2World * world, entityx::EntityManager & entities ) : _entities(entities), _world(world) {
+    explicit FactorySystem( b2World & world, entityx::EntityManager & entities ) : _entities(entities), _world(world) {
     
         glassFragmentFixture = * new b2FixtureDef();
         b2PolygonShape * quad = new b2PolygonShape();
@@ -143,7 +129,7 @@ public:
         glassFragmentFixture.friction = 1.0f;
         glassFragmentFixture.restitution = 0.4f;
         glassFragmentFixture.filter.categoryBits = PHYSICS_TYPE_GLASS;
-        glassFragmentFixture.filter.maskBits = PHYSICS_TYPE_GLASS | PHYSICS_TYPE_FLOOR;
+        glassFragmentFixture.filter.maskBits =  PHYSICS_TYPE_FLOOR;
     
         fragmentFixture = * new b2FixtureDef();
         b2CircleShape * c =  new b2CircleShape();
@@ -224,17 +210,18 @@ public:
     }
     
     void createGround( const vec2 &pos, float width, float height)
-    {
-    
+    {    
         auto ground = _entities.create();
         
         auto body = ground.assign<Body>();
+        ground.assign<Floor>();
 
         b2FixtureDef * tempGroundFixture = new b2FixtureDef( groundFixture );
 
-        tempGroundFixture->shape = new b2PolygonShape();
-        ((b2PolygonShape*)tempGroundFixture->shape)->SetAsBox( width / 2, height / 2 , b2Vec2(0,0), 0.0f );
-
+        b2PolygonShape * groundShape = new b2PolygonShape();
+        groundShape->SetAsBox( width / 2, height / 2 , b2Vec2(0,0), 0.0f );
+        tempGroundFixture->shape = groundShape;
+        
         body->bodyDefToAdd.position.Set( pos.x, pos.y );
         body->addFixtureDef( tempGroundFixture );
     }
@@ -261,6 +248,7 @@ public:
         //Assign components to entity
         auto body = frag.assign<Body>( );
         frag.assign<Fragment>( FRAG_TYPE_FIRE );
+        frag.assign<Expires>(5.0f);
         
         createDynamicBodyDef( pos, velocity, body->bodyDefToAdd );
         
@@ -280,7 +268,7 @@ public:
         //Assign components to entity
         auto body = frag.assign<Body>( );
         frag.assign<Fragment>( FRAG_TYPE_GLASS );
-        frag.assign<soso::Expires>( randFloat(1.0f, 5.0f));
+        frag.assign<Expires>( randFloat(1.0f, 5.0f));
         
         createDynamicBodyDef( pos, velocity, body->bodyDefToAdd );
         
@@ -288,9 +276,11 @@ public:
         b2FixtureDef * tempFragmentFixture = new b2FixtureDef( glassFragmentFixture );
         
         //Have to create a new shape
-        tempFragmentFixture->shape = new b2PolygonShape();
-        ((b2PolygonShape*)tempFragmentFixture->shape)->SetAsBox( randFloat(0.03,0.12), randFloat(0.03,0.12), b2Vec2(0,0), 0.0f );
-
+        b2PolygonShape * fragmentShape = new b2PolygonShape();
+        fragmentShape->SetAsBox( randFloat(0.03,0.12), randFloat(0.03,0.12), b2Vec2(0,0), 0.0f );
+        tempFragmentFixture->shape = fragmentShape;
+        
+        
         //Add the fixture to the body component's fixturedef list --- but DONT actually add it to the box2d Body yet. This needs to wait until an actual STEP
         body->addFixtureDef( tempFragmentFixture );
     }
@@ -299,6 +289,8 @@ public:
     {
         auto fire = _entities.create();
         auto body =  fire.assign<Body>();
+        fire.assign<Fire>();
+        fire.assign<soso::Expires>(randFloat(2.0f, 5.0f));
         b2FixtureDef * tempFireFixture = new b2FixtureDef( fireFixture );
         body->bodyDefToAdd.position.Set( round(pos.x / 2.0f) * 2.0f , round(pos.y / 2.0f) * 2.0f );
         body->addFixtureDef( tempFireFixture );
@@ -331,8 +323,8 @@ public:
     
 private:
     
-    b2World * _world;
-    entityx::EntityManager & _entities;
+    b2World & _world;
+    EntityManager & _entities;
     
     b2FixtureDef glassFragmentFixture;
     b2FixtureDef fragmentFixture;
@@ -340,7 +332,9 @@ private:
     b2FixtureDef groundFixture;
     b2FixtureDef fireFixture;
 
-    void createDynamicBodyDef( const vec2 &pos, const vec2 &velocity, b2BodyDef & bodyDef )
+    
+    
+    void createDynamicBodyDef( const vec2 & pos, const vec2 & velocity, b2BodyDef & bodyDef )
     {
         bodyDef.position.Set( pos.x, pos.y );
         bodyDef.type = b2_dynamicBody;
@@ -359,7 +353,7 @@ private:
         
         
         //Add the body to the world, using the saved bodyDef inside the entity
-        auto body = bodyComponent->body = _world->CreateBody( &bodyComponent->bodyDefToAdd );
+        auto body = bodyComponent->body = _world.CreateBody( &bodyComponent->bodyDefToAdd );
         
         //Add the fixtures to the body, using the saved fixtureDefs. delete them as we go
         for (auto it = bodyComponent->fixtureDefList.begin(); it != bodyComponent->fixtureDefList.end(); ++it){
